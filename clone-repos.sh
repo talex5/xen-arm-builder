@@ -10,58 +10,48 @@ else
     GCC=gcc-4.7-arm-linux-gnueabihf
 fi
 
-sudo apt-get -y install rsync git $GCC build-essential qemu kpartx binfmt-support qemu-user-static python bc parted dosfstools
+# Only attempt to install a compiler if one isn't found
+! which arm-linux-gnueabihf-gcc > /dev/null
+GCC_FOUND=$?
+if [ $GCC_FOUND = 0 ]; then
+    sudo apt-get -y install rsync git $GCC build-essential qemu kpartx binfmt-support qemu-user-static python bc parted dosfstools curl device-tree-compiler libncurses5-dev
+else
+    sudo apt-get -y install rsync git build-essential qemu kpartx binfmt-support qemu-user-static python bc parted dosfstools curl device-tree-compiler libncurses5-dev
+fi
 
+# Clones or updates git repos depending on if they already exist or not.
+# ex: clone_branch <dir> <branch or tag> <repo_url>
 clone_branch () {
-  git clone ${1}/${2}.git
-  cd $2
-  if [ "$3" != "master" ]; then
-    git checkout -b $3 origin/$3
+  if [ ! -d ${1} ]; then
+    git clone --depth 1 -b ${2} ${3} ${1} || echo "git failed with status: $?"
+  else
+    cd $1
+    git reset HEAD --hard
+    git pull --ff-only ${3} ${2} || echo "git failed with status: $?"
+    cd ..
   fi
-  cd ..
 }
 
-if [ ! -d u-boot ]; then
-  git clone git://git.denx.de/u-boot.git -b v2015.04
-else
-  cd u-boot
-  git pull --ff-only origin v2015.04
-  cd ..
-fi
+clone_branch u-boot v2016.03 git://git.denx.de/u-boot.git
 
-if [ ! -d linux ]; then
-  #clone_branch git://git.kernel.org/pub/scm/linux/kernel/git/torvalds linux master
-  clone_branch https://github.com/talex5 linux master
-else
-  cd linux
-  git reset HEAD --hard
-  rm -rf drivers/block/blktap2 include/linux/blktap.h
-  git pull --ff-only https://github.com/talex5/linux.git master
-  cd ..
-fi
+clone_branch linux linux-4.5.y git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
 
 cd linux
-for i in ../patches/linux*.patch
-do
-  patch -p1 < $i
+for i in ../patches/linux*.patch; do
+  if [ -e $i ]; then
+    patch -p1 < $i
+  fi
 done
 cd ..
 
-if [ ! -d linux-firmware ]; then
-  clone_branch https://git.kernel.org/pub/scm/linux/kernel/git/firmware linux-firmware master
-else
-  cd linux-firmware
-  git pull --ff-only https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git master
-  cd ..
-fi
+clone_branch linux-firmware master https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
 
-if [ ! -d xen ]; then
-  #clone_branch git://xenbits.xen.org xen stable-4.4
-  clone_branch https://github.com/talex5 xen fix-grant-mapping
-else
-  cd xen
-  #git pull origin stable-4.4
-  git pull --ff-only https://github.com/talex5/xen.git fix-grant-mapping
-  cd ..
-fi
+clone_branch xen stable-4.7 git://xenbits.xen.org/xen.git
 
+cd xen
+for i in ../patches/xen*.patch; do
+  if [ -e $i ]; then
+    patch -p1 < $i
+  fi
+done
+cd ..
